@@ -1,5 +1,5 @@
-from flask import Flask, request, jsonify
-from flask_socketio import SocketIO,emit
+from flask import Flask, request, jsonify, session
+from flask_socketio import SocketIO,emit, disconnect
 from flask_cors import CORS
 from flask_login import (
     LoginManager,
@@ -9,6 +9,8 @@ from flask_login import (
     login_user,
     logout_user,
 )
+import functools
+from flask_session import Session
 from flask_wtf.csrf import CSRFProtect, generate_csrf
 import json
 from dotenv import load_dotenv
@@ -74,9 +76,18 @@ def user_loader(id):
         user_model.id = user[0]
         return user_model
     return None
+def authenticated_only(f):
+    @functools.wraps(f)
+    def wrapped(*args, **kwargs):
+        if not current_user.is_authenticated:
+            disconnect()
+        else:
+            return f(*args, **kwargs)
+    return wrapped
 
 @socketio.on("connect")
 def connected():
+
     try:
         print(request.sid)
         print("client has connected")
@@ -86,12 +97,15 @@ def connected():
         print("Error:", e)
 
 @socketio.on('send_message')
+@authenticated_only
 def handle_message(data):
     try:
         print("data from the front end: ",str(data))
         print(request.sid)
         parsedFrontEnd = json.loads(str(data)) 
-        emit("data",{'data': json.dumps(parsedFrontEnd), 'id' : request.sid},broadcast=True, exclude_sid=request.sid)
+        
+        print('test')
+        emit("data",json.dumps({'message': parsedFrontEnd['message'], 'id' : session['user_id'], 'username' : session['username']}),broadcast=True, exclude_sid=request.sid)
     except Exception as e:
         print("Error:", e)
 
@@ -116,17 +130,18 @@ def login():
     user = cursor.fetchone()
     if (not user):
         print("NO USER")
-        return jsonify({'message': 'no username found'})
+        return jsonify({'message': 'Unknown username and password combination.', 'messageType': 'E'})
    
     
     if user[1] == username and (bcrypt.checkpw(password.encode('utf8'), user[2].encode('utf8'))):
         user_model = User()
         user_model.id = user[0]
-
+        session["username"] = username
+        session["user_id"] = user[0]
         login_user(user_model)
-        return jsonify({"login": True})
+        return jsonify({"message": 'Successfully logged in', 'messageType': 'S'})
     
-    return jsonify({"login": False})
+    return jsonify({'message': 'Unknown username and password combination.', 'messageType': 'E'})
 
 @app.route("/api/create-user", methods=['POST'])
 def create_user():
@@ -143,9 +158,9 @@ def create_user():
         response = {'message': 'User created successfully', 'messageType': 'S'}
     except mysql.connector.Error as error:
         if error.errno == mysql.connector.errorcode.ER_DUP_ENTRY:
-            response = {'message': 'Username already exists'}
+            response = {'message': 'Username already exists', 'messageType': 'E'}
         else:
-            response = {'message': 'Unexpected error occurred'}
+            response = {'message': 'Unexpected error occurred', 'messageType': 'E'}
 
         response['messageType'] = 'E'
     return json.dumps(response)
@@ -170,9 +185,6 @@ def get_session():
 
     return jsonify({"login": False})
 
-@app.route("/api/ping")
-def ping():
-    return jsonify({"message": "ping"})
 
 def get_hashed_password(password):
     hashed = bcrypt.hashpw(password.encode('utf8'), bcrypt.gensalt())
