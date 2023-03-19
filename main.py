@@ -103,11 +103,18 @@ def handle_message(data):
         print("data from the front end: ",str(data))
         print(request.sid)
         parsedFrontEnd = json.loads(str(data)) 
-        
-        print('test')
+
+        add_message_to_db(parsedFrontEnd['message'], session['user_id'])
         emit("data",json.dumps({'message': parsedFrontEnd['message'], 'id' : session['user_id'], 'username' : session['username']}),broadcast=True, exclude_sid=request.sid)
     except Exception as e:
         print("Error:", e)
+
+
+def add_message_to_db(message, userID):
+    query = ("INSERT INTO message_history (messageContents, userID) VALUES (%s, %s);")
+    values = (message, userID)
+    cursor.execute(query, values)
+    cnx.commit()
 
 @socketio.on("disconnect")
 def disconnected():
@@ -123,21 +130,32 @@ def login():
     username = request.json['username']
     password = request.json['password']
 
-    query = "SELECT * FROM user_authentication WHERE username = %s"
+    query =  """
+        SELECT * FROM user_info 
+        INNER JOIN user_authentication 
+        ON user_info.userID = user_authentication.userID
+        WHERE username = %s; 
+    """
     values = (username,)
 
     cursor.execute(query, values)
     user = cursor.fetchone()
+
+    print(user)
     if (not user):
         print("NO USER")
         return jsonify({'message': 'Unknown username and password combination.', 'messageType': 'E'})
    
-    
-    if user[1] == username and (bcrypt.checkpw(password.encode('utf8'), user[2].encode('utf8'))):
+    userInfo = {
+        'userID' : user[0],
+        'username' : user[1],
+        'password' : user[3]
+    }
+    if userInfo['username'] == username and (bcrypt.checkpw(password.encode('utf8'), userInfo['password'].encode('utf8'))):
         user_model = User()
-        user_model.id = user[0]
-        session["username"] = username
-        session["user_id"] = user[0]
+        user_model.id = userInfo['userID']
+        session["username"] = userInfo['username']
+        session["user_id"] = userInfo['userID']
         login_user(user_model)
         return jsonify({"message": 'Successfully logged in', 'messageType': 'S'})
     
@@ -147,36 +165,71 @@ def login():
 def create_user():
     username = request.json['username']
     password = request.json['password']
-
     hashed_password = get_hashed_password(password)
-    query = "INSERT INTO user_authentication (username, password) VALUES (%s, %s)"
-    values = (username, hashed_password)
+    print(password)
+    check_username = """
+        SELECT username FROM user_info
+        WHERE username = %s;
+    """
 
-    try:
-        cursor.execute(query, values)
-        cnx.commit()
-        response = {'message': 'User created successfully', 'messageType': 'S'}
-    except mysql.connector.Error as error:
-        if error.errno == mysql.connector.errorcode.ER_DUP_ENTRY:
-            response = {'message': 'Username already exists', 'messageType': 'E'}
-        else:
-            response = {'message': 'Unexpected error occurred', 'messageType': 'E'}
+    cursor.execute(check_username, (username,))
+    result = cursor.fetchone()
 
-        response['messageType'] = 'E'
-    return json.dumps(response)
+    if (result):
+        return jsonify({'message': 'Username already exists', 'messageType': 'E'})
+
+
+    add_user_authentication = """
+        INSERT INTO user_authentication
+        (password)
+        VALUES (%s);
+    """
+
+    cursor.execute(add_user_authentication, (hashed_password,))
+    cnx.commit()
+
+    user_id = cursor.lastrowid
+
+    add_user_info = """
+        INSERT INTO user_info
+        (userID, username)
+        VALUES (%s, %s);
+    """
+    cursor.execute(add_user_info, (user_id, username))
+    cnx.commit()
+
+
+    return jsonify({'message': 'Successfuly created user ' + username, 'messageType': 'S'})
 
 
 @app.route("/api/getcsrf", methods=["GET"])
-def get_cstf():
+def get_csrf():
     token = generate_csrf()
     response = jsonify({"message": "CSRF cookie set"})
     response.headers.set("X-CSRFToken", token)
     return response
 
-@app.route("/api/data")
+@app.route("/api/fetch-message-history", methods=["POST"])
 @login_required
-def get_data():
-    ""
+def get_message_history():
+    
+    number_of_rows = 10 #int(request.json["numberOfRows"])
+    start_from_id = request.json["startFromID"]
+
+    query = """
+        SELECT * from message_history 
+        WHERE messageID >= %s LIMIT %s;
+    """
+    values = (start_from_id, number_of_rows)
+    cursor.execute(query, values)
+
+    messages = cursor.fetchall()
+
+    print(messages)
+
+    return jsonify({"messages": messages})
+
+
 
 @app.route("/api/getsession")
 def get_session():
@@ -188,7 +241,7 @@ def get_session():
 
 def get_hashed_password(password):
     hashed = bcrypt.hashpw(password.encode('utf8'), bcrypt.gensalt())
-
+    print(hashed)
     return hashed
 
     
