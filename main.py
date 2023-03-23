@@ -18,7 +18,6 @@ import os
 import mysql.connector
 import bcrypt
 
-
 app = Flask(__name__)
 
 socketio = SocketIO(app,cors_allowed_origins="*")
@@ -86,11 +85,11 @@ def authenticated_only(f):
     return wrapped
 
 @socketio.on("connect")
+@authenticated_only
 def connected():
-
     try:
         print(request.sid)
-        print("client has connected")
+        print(str(current_user.id) +"has connected")
         emit("connect",{"data": f"id: {request.sid} is connected"})
         
     except Exception as e:
@@ -104,8 +103,10 @@ def handle_message(data):
         print(request.sid)
         parsedFrontEnd = json.loads(str(data)) 
 
-        add_message_to_db(parsedFrontEnd['message'], session['user_id'])
-        emit("data",json.dumps({'message': parsedFrontEnd['message'], 'id' : session['user_id'], 'username' : session['username']}),broadcast=True, exclude_sid=request.sid)
+        print(parsedFrontEnd)
+        messageID = add_message_to_db(parsedFrontEnd['message'], session['user_id'])
+        message = get_messages_from_id(messageID, 1)
+        emit("data", json.dumps({"messages": message}, default=str) ,broadcast=True, exclude_sid=request.sid)
     except Exception as e:
         print("Error:", e)
 
@@ -115,6 +116,8 @@ def add_message_to_db(message, userID):
     values = (message, userID)
     cursor.execute(query, values)
     cnx.commit()
+    return cursor.lastrowid
+    
 
 @socketio.on("disconnect")
 def disconnected():
@@ -166,7 +169,6 @@ def create_user():
     username = request.json['username']
     password = request.json['password']
     hashed_password = get_hashed_password(password)
-    print(password)
     check_username = """
         SELECT username FROM user_info
         WHERE username = %s;
@@ -209,6 +211,15 @@ def get_csrf():
     response.headers.set("X-CSRFToken", token)
     return response
 
+@app.route("/api/fetch-newest-messages", methods=["POST"])
+@login_required
+def get_newest_messages():
+    number_of_messages = int(request.json["numberOfMessages"])
+    messages = get_new_messages(number_of_messages)
+
+    return json.dumps({"messages": messages}, default=str)
+
+
 @app.route("/api/fetch-message-history", methods=["POST"])
 @login_required
 def get_message_history():
@@ -216,27 +227,50 @@ def get_message_history():
     number_of_rows = 10 #int(request.json["numberOfRows"])
     start_from_id = request.json["startFromID"]
 
+    messages = get_messages_from_id(start_from_id, 10)
+    return jsonify({"messages": messages})
+
+
+def get_messages_from_id(minID, numRows):
+      
     query = """
-        SELECT * from message_history 
+        SELECT messageID, messageContents, messageTimestamp, message_history.userID, username 
+        FROM message_history
+        INNER JOIN user_info 
+        ON message_history.userID = user_info.userID 
         WHERE messageID >= %s LIMIT %s;
+
     """
-    values = (start_from_id, number_of_rows)
+    values = (minID, numRows)
+
     cursor.execute(query, values)
 
     messages = cursor.fetchall()
 
-    print(messages)
+    return messages
 
-    return jsonify({"messages": messages})
+def get_new_messages(numRows):
+    query = """
+        SELECT messageID, messageContents, messageTimestamp, message_history.userID, username 
+        FROM message_history
+        INNER JOIN user_info 
+        ON message_history.userID = user_info.userID
+        ORDER BY messageID DESC
+        LIMIT %s;
+    """
+    values = (numRows,)
+
+    cursor.execute(query, values)
+
+    messages = cursor.fetchall()
+
+    return messages
 
 
 
-@app.route("/api/getsession")
+@app.route("/api/check-session")
 def get_session():
-    if current_user.is_authenticated:
-        return jsonify({"login": True})
-
-    return jsonify({"login": False})
+    return jsonify({"login": current_user.is_authenticated})
 
 
 def get_hashed_password(password):
