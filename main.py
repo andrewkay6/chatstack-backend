@@ -75,6 +75,7 @@ def user_loader(id):
         user_model.id = user[0]
         return user_model
     return None
+
 def authenticated_only(f):
     @functools.wraps(f)
     def wrapped(*args, **kwargs):
@@ -104,8 +105,8 @@ def handle_message(data):
         parsedFrontEnd = json.loads(str(data)) 
 
         print(parsedFrontEnd)
-        messageID = add_message_to_db(parsedFrontEnd['message'], session['user_id'])
-        message = get_messages_from_id(messageID, 1)
+        message_id = add_message_to_db(parsedFrontEnd['message'], session['user_id'])
+        message = get_messages_from_id(message_id, 1)
         emit("data", json.dumps({"messages": message}, default=str) ,broadcast=True, exclude_sid=request.sid)
     except Exception as e:
         print("Error:", e)
@@ -134,21 +135,23 @@ def login():
     password = request.json['password']
 
     query =  """
-        SELECT * FROM user_info 
+        SELECT user_info.userID, username, user_authentication.userID, password FROM user_info 
         INNER JOIN user_authentication 
         ON user_info.userID = user_authentication.userID
-        WHERE username = %s; 
+        WHERE username = %s;
     """
     values = (username,)
 
     cursor.execute(query, values)
     user = cursor.fetchone()
 
-    print(user)
+    
     if (not user):
         print("NO USER")
         return jsonify({'message': 'Unknown username and password combination.', 'messageType': 'E'})
    
+
+    print(user)
     userInfo = {
         'userID' : user[0],
         'username' : user[1],
