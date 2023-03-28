@@ -125,6 +125,7 @@ def disconnected():
     try:
         print("user disconnected" + str(request.sid))
         emit("disconnect",f"user {request.sid} disconnected",broadcast=True)
+        logout_user()
     except Exception as e:
         print("Error:", e)
 
