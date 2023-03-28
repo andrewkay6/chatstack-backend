@@ -123,8 +123,8 @@ def add_message_to_db(message, userID):
 @socketio.on("disconnect")
 def disconnected():
     try:
-        print("user disconnected" + str(request.sid))
-        emit("disconnect",f"user {request.sid} disconnected",broadcast=True)
+        #print("user disconnected" + str(request.sid))
+        #emit("disconnect",f"user {request.sid} disconnected",broadcast=True)
         logout_user()
     except Exception as e:
         print("Error:", e)
