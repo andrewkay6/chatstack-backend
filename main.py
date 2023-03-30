@@ -123,8 +123,8 @@ def add_message_to_db(message, userID):
 @socketio.on("disconnect")
 def disconnected():
     try:
-        #print("user disconnected" + str(request.sid))
-        #emit("disconnect",f"user {request.sid} disconnected",broadcast=True)
+        print("user disconnected" + str(request.sid))
+        emit("disconnect",f"user {request.sid} disconnected",broadcast=True)
         logout_user()
     except Exception as e:
         print("Error:", e)
@@ -238,7 +238,7 @@ def get_message_history():
 def get_messages_from_id(minID, numRows):
       
     query = """
-        SELECT messageID, messageContents, messageTimestamp, message_history.userID, username 
+        SELECT messageID, messageContents, messageTimestamp, message_history.userID, username, userColor, profilePictureURL
         FROM message_history
         INNER JOIN user_info 
         ON message_history.userID = user_info.userID 
@@ -255,7 +255,7 @@ def get_messages_from_id(minID, numRows):
 
 def get_new_messages(numRows):
     query = """
-        SELECT messageID, messageContents, messageTimestamp, message_history.userID, username 
+        SELECT messageID, messageContents, messageTimestamp, message_history.userID, username, userColor, profilePictureURL
         FROM message_history
         INNER JOIN user_info 
         ON message_history.userID = user_info.userID
