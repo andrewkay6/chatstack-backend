@@ -235,8 +235,7 @@ def get_message_history():
     return jsonify({"messages": messages})
 
 
-def get_messages_from_id(minID, numRows):
-      
+def get_messages_from_id(minID, numRows):      
     query = """
         SELECT messageID, messageContents, messageTimestamp, message_history.userID, username, userColor, profilePictureURL
         FROM message_history
@@ -270,8 +269,38 @@ def get_new_messages(numRows):
 
     return messages
 
+@app.route("/api/fetch-current-user-info", methods=["POST"])
+@login_required
+def get_current_user_info():
+    query = """
+        SELECT *
+        FROM user_info
+        WHERE userID = %s;
+    """
+    values = (current_user.id,)
 
+    cursor.execute(query, values)
+    user = cursor.fetchone()
+    #return in json format
+    return jsonify({"user": user})
 
+@app.route("/api/fetch-user-info", methods=["POST"])
+@login_required
+def get_user_info():
+    print(request.json)
+    listOfIDs = request.json['listOfUserIDs']
+    listOfIDsString = ','.join(str(id) for id in listOfIDs)
+    query = """
+        SELECT *
+        FROM user_info
+        WHERE userID IN (%s);
+    """ % listOfIDsString
+
+    cursor.execute(query)
+    users = cursor.fetchall()
+    #return in json format
+    return jsonify({"users": users})
+    
 @app.route("/api/check-session")
 def get_session():
     return jsonify({"login": current_user.is_authenticated})
