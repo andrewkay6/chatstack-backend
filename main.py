@@ -300,7 +300,27 @@ def get_user_info():
     users = cursor.fetchall()
     #return in json format
     return jsonify({"users": users})
-    
+
+@app.route("/api/update-user-info", methods=["POST"])
+@login_required
+def update_user_info():
+    username = request.json['username']
+    userColor = request.json['userColor']
+    profilePictureURL = request.json['profilePictureURL']
+    userID = current_user.id
+
+    query = """
+        UPDATE user_info
+        SET username = %s, userColor = %s, profilePictureURL = %s
+        WHERE userID = %s;
+    """
+    values = (username, userColor, profilePictureURL, userID)
+
+    cursor.execute(query, values)
+    cnx.commit()
+
+    return jsonify({"message": "Successfully updated user info", "messageType": "S"})
+
 @app.route("/api/check-session")
 def get_session():
     return jsonify({"login": current_user.is_authenticated})
