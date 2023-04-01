@@ -38,7 +38,6 @@ app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     REMEMBER_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
-
 )
 
 cors = CORS(
